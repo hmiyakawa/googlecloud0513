@@ -1,0 +1,449 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>翻訳チェッカー</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;700&family=DM+Mono:wght@300;400&family=Syne:wght@700;800&display=swap');
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  background: #0d0d0f; color: #e8e4dc;
+  font-family: 'Noto Sans JP', sans-serif;
+  min-height: 100vh; display: flex; flex-direction: column;
+}
+
+.header {
+  padding: 1.1rem 2rem; border-bottom: 1px solid #2a2a2e;
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 1rem; flex-wrap: wrap;
+}
+.header-left { display: flex; align-items: baseline; gap: 1rem; }
+.header h1 {
+  font-family: 'Syne', sans-serif; font-weight: 800;
+  font-size: 1.2rem; color: #e8d5a3; letter-spacing: -0.02em;
+}
+.header-sub {
+  font-family: 'DM Mono', monospace; font-size: 0.6rem;
+  color: #6b6b72; letter-spacing: 0.08em;
+}
+.header-right { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; }
+
+.flow-badge {
+  font-family: 'DM Mono', monospace; font-size: 0.62rem;
+  color: #7eb8c4; letter-spacing: 0.04em;
+  background: #141416; padding: 0.35rem 0.7rem;
+  border: 1px solid #2a3a3e;
+}
+
+.lang-selector {
+  display: flex; align-items: center; gap: 0.5rem;
+  background: #141416; border: 1px solid #2a2a2e;
+  padding: 0.4rem 0.75rem; transition: border-color 0.2s;
+}
+.lang-selector:focus-within { border-color: #7eb8c4; }
+.lang-selector-label {
+  font-family: 'DM Mono', monospace; font-size: 0.58rem;
+  color: #6b6b72; letter-spacing: 0.1em; text-transform: uppercase;
+  white-space: nowrap;
+}
+.lang-select {
+  background: transparent; border: none; color: #7eb8c4;
+  font-family: 'Noto Sans JP', sans-serif; font-size: 0.85rem;
+  cursor: pointer; outline: none;
+}
+.lang-select option { background: #141416; color: #e8e4dc; }
+.lang-select:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.main {
+  flex: 1; padding: 1.5rem 2rem;
+  display: flex; flex-direction: column; gap: 1.25rem;
+}
+
+.panels {
+  display: grid;
+  grid-template-columns: 1fr 28px 1fr 28px 1fr;
+  gap: 0 0.25rem; align-items: start;
+}
+.panel { display: flex; flex-direction: column; }
+.panel-label {
+  font-family: 'DM Mono', monospace; font-size: 0.6rem;
+  letter-spacing: 0.14em; text-transform: uppercase;
+  color: #6b6b72; margin-bottom: 0.5rem;
+  display: flex; align-items: center; gap: 0.4rem;
+}
+.dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+.dot-ja  { background: #e8d5a3; }
+.dot-mid { background: #7eb8c4; }
+.dot-bk  { background: #c47e7e; }
+
+textarea {
+  background: #141416; border: 1px solid #2a2a2e;
+  color: #e8e4dc; font-family: 'Noto Sans JP', sans-serif;
+  font-size: 0.88rem; line-height: 1.8; padding: 1rem;
+  resize: none; outline: none; height: 220px; width: 100%;
+  transition: border-color 0.2s;
+}
+textarea:focus { border-color: #e8d5a3; }
+textarea:disabled { opacity: 0.5; }
+
+.output-box {
+  background: #141416; border: 1px solid #2a2a2e;
+  color: #e8e4dc; font-family: 'Noto Sans JP', sans-serif;
+  font-size: 0.88rem; line-height: 1.8; padding: 1rem;
+  height: 220px; overflow-y: auto; white-space: pre-wrap;
+  word-break: break-word; display: flex; align-items: flex-start;
+}
+.output-box.mid-box { border-color: #2a3a3e; }
+.output-box.bk-box  { border-color: #3e2a2a; }
+
+.output-empty {
+  color: #3a3a42; font-family: 'DM Mono', monospace; font-size: 0.68rem;
+  width: 100%; text-align: center; align-self: center;
+}
+.output-loading {
+  display: flex; align-items: center; justify-content: center;
+  gap: 0.5rem; width: 100%; align-self: center;
+  color: #6b6b72; font-family: 'DM Mono', monospace; font-size: 0.7rem;
+}
+.output-text { align-self: flex-start; width: 100%; }
+
+.arrow-col {
+  display: flex; align-items: center; justify-content: center;
+  padding-top: 1.55rem; color: #3a3a42;
+}
+
+.action-row {
+  display: flex; align-items: center; gap: 0.75rem; justify-content: center;
+}
+.btn-main {
+  background: #e8d5a3; color: #0d0d0f; border: none;
+  padding: 0.8rem 2.5rem; font-family: 'Syne', sans-serif;
+  font-weight: 700; font-size: 0.85rem; letter-spacing: 0.04em;
+  cursor: pointer; transition: all 0.15s;
+}
+.btn-main:hover:not(:disabled) { background: #f0e2b5; }
+.btn-main:disabled { opacity: 0.35; cursor: not-allowed; }
+.btn-clear {
+  background: transparent; color: #6b6b72; border: 1px solid #2a2a2e;
+  padding: 0.8rem 1.2rem; font-family: 'DM Mono', monospace;
+  font-size: 0.7rem; cursor: pointer; transition: all 0.15s; letter-spacing: 0.08em;
+}
+.btn-clear:hover:not(:disabled) { border-color: #6b6b72; color: #e8e4dc; }
+.btn-clear:disabled { opacity: 0.35; cursor: not-allowed; }
+
+.hint {
+  font-family: 'DM Mono', monospace; font-size: 0.6rem;
+  color: #2a2a2e; text-align: center; letter-spacing: 0.08em;
+}
+.error-box {
+  font-family: 'DM Mono', monospace; font-size: 0.72rem;
+  color: #c47e7e; text-align: center;
+  background: rgba(196,126,126,0.07); padding: 0.6rem 1rem;
+  border: 1px solid rgba(196,126,126,0.2); display: none;
+}
+
+.diff-panel {
+  background: #141416; border: 1px solid #2a2a2e;
+  padding: 1.25rem 1.5rem; display: none;
+}
+.diff-header {
+  font-family: 'DM Mono', monospace; font-size: 0.58rem;
+  letter-spacing: 0.14em; text-transform: uppercase;
+  color: #6b6b72; margin-bottom: 0.75rem;
+  display: flex; align-items: center; justify-content: space-between;
+}
+.score-badge { font-family: 'Syne', sans-serif; font-weight: 800; font-size: 1.1rem; }
+.sim-bar-wrap { display: flex; align-items: center; gap: 0.75rem; }
+.sim-bar { height: 3px; background: #2a2a2e; width: 160px; }
+.sim-fill { height: 100%; transition: width 0.6s ease; }
+.diff-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-top: 0.5rem; }
+.diff-col-label {
+  font-family: 'DM Mono', monospace; font-size: 0.58rem;
+  letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 0.4rem;
+}
+.diff-text { font-size: 0.88rem; line-height: 1.85; white-space: pre-wrap; word-break: break-word; }
+
+@keyframes spin { to { transform: rotate(360deg); } }
+.spinner {
+  width: 13px; height: 13px; border: 2px solid #2a2a2e;
+  border-top-color: #7eb8c4; border-radius: 50%;
+  animation: spin 0.7s linear infinite; display: inline-block; flex-shrink: 0;
+}
+
+@media (max-width: 768px) {
+  .panels { grid-template-columns: 1fr; }
+  .arrow-col { padding-top: 0; height: 24px; }
+  .header { flex-direction: column; align-items: flex-start; }
+  .diff-grid { grid-template-columns: 1fr; }
+}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="header-left">
+    <h1>翻訳チェッカー</h1>
+    <span class="header-sub">バックトランスレーション検証</span>
+  </div>
+  <div class="header-right">
+    <span class="flow-badge" id="flow-badge">🇯🇵 日本語 → 🇺🇸 英語 → 🇯🇵 日本語</span>
+    <div class="lang-selector">
+      <span class="lang-selector-label">翻訳言語</span>
+      <select class="lang-select" id="lang-select">
+        <option value="en"    data-flag="🇺🇸">🇺🇸　英語</option>
+        <option value="zh"    data-flag="🇨🇳">🇨🇳　中国語（簡体字）</option>
+        <option value="zh-tw" data-flag="🇹🇼">🇹🇼　中国語（繁体字）</option>
+        <option value="ko"    data-flag="🇰🇷">🇰🇷　韓国語</option>
+        <option value="fr"    data-flag="🇫🇷">🇫🇷　フランス語</option>
+        <option value="de"    data-flag="🇩🇪">🇩🇪　ドイツ語</option>
+        <option value="es"    data-flag="🇪🇸">🇪🇸　スペイン語</option>
+        <option value="it"    data-flag="🇮🇹">🇮🇹　イタリア語</option>
+        <option value="pt"    data-flag="🇵🇹">🇵🇹　ポルトガル語</option>
+        <option value="ru"    data-flag="🇷🇺">🇷🇺　ロシア語</option>
+        <option value="ar"    data-flag="🇸🇦">🇸🇦　アラビア語</option>
+        <option value="th"    data-flag="🇹🇭">🇹🇭　タイ語</option>
+        <option value="vi"    data-flag="🇻🇳">🇻🇳　ベトナム語</option>
+        <option value="id"    data-flag="🇮🇩">🇮🇩　インドネシア語</option>
+      </select>
+    </div>
+  </div>
+</div>
+
+<div class="main">
+  <div class="panels">
+
+    <!-- Panel 1: 日本語 -->
+    <div class="panel">
+      <div class="panel-label"><span class="dot dot-ja"></span>🇯🇵 元の日本語</div>
+      <textarea id="input-ja" placeholder="ここに日本語テキストを入力…"></textarea>
+    </div>
+
+    <div class="arrow-col">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+        <path d="M5 12h14M12 5l7 7-7 7"/>
+      </svg>
+    </div>
+
+    <!-- Panel 2: 中間言語 -->
+    <div class="panel">
+      <div class="panel-label"><span class="dot dot-mid"></span><span id="mid-label">🇺🇸 英語翻訳</span></div>
+      <div class="output-box mid-box" id="output-mid">
+        <span class="output-empty">翻訳後に表示されます</span>
+      </div>
+    </div>
+
+    <div class="arrow-col">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+        <path d="M5 12h14M12 5l7 7-7 7"/>
+      </svg>
+    </div>
+
+    <!-- Panel 3: 逆翻訳 -->
+    <div class="panel">
+      <div class="panel-label"><span class="dot dot-bk"></span>🇯🇵 逆翻訳（日本語）</div>
+      <div class="output-box bk-box" id="output-back">
+        <span class="output-empty">翻訳後に表示されます</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="action-row">
+    <button class="btn-main" id="btn-run" onclick="runTranslation()">翻訳して確認する</button>
+    <button class="btn-clear" id="btn-clear" onclick="clearAll()">クリア</button>
+  </div>
+  <div class="hint">Ctrl + Enter でも実行できます</div>
+  <div class="error-box" id="error-box"></div>
+
+  <!-- 類似度パネル -->
+  <div class="diff-panel" id="diff-panel">
+    <div class="diff-header">
+      <span>類似度スコア（元テキスト vs 逆翻訳）</span>
+      <div class="sim-bar-wrap">
+        <div class="sim-bar"><div class="sim-fill" id="sim-fill"></div></div>
+        <span class="score-badge" id="score-text"></span>
+      </div>
+    </div>
+    <div class="diff-grid">
+      <div>
+        <div class="diff-col-label" style="color:#e8d5a3">元のテキスト</div>
+        <div class="diff-text" id="diff-orig" style="color:#e8d5a3;opacity:0.9"></div>
+      </div>
+      <div>
+        <div class="diff-col-label" style="color:#c47e7e">逆翻訳テキスト</div>
+        <div class="diff-text" id="diff-back" style="color:#c47e7e;opacity:0.9"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const LANGS = {
+  en:    { label: '英語',          native: 'English',                 flag: '🇺🇸' },
+  zh:    { label: '中国語（簡体字）', native: 'Chinese (Simplified)',    flag: '🇨🇳' },
+  'zh-tw':{ label: '中国語（繁体字）', native: 'Chinese (Traditional)', flag: '🇹🇼' },
+  ko:    { label: '韓国語',         native: 'Korean',                  flag: '🇰🇷' },
+  fr:    { label: 'フランス語',     native: 'French',                  flag: '🇫🇷' },
+  de:    { label: 'ドイツ語',       native: 'German',                  flag: '🇩🇪' },
+  es:    { label: 'スペイン語',     native: 'Spanish',                 flag: '🇪🇸' },
+  it:    { label: 'イタリア語',     native: 'Italian',                 flag: '🇮🇹' },
+  pt:    { label: 'ポルトガル語',   native: 'Portuguese',              flag: '🇵🇹' },
+  ru:    { label: 'ロシア語',       native: 'Russian',                 flag: '🇷🇺' },
+  ar:    { label: 'アラビア語',     native: 'Arabic',                  flag: '🇸🇦' },
+  th:    { label: 'タイ語',         native: 'Thai',                    flag: '🇹🇭' },
+  vi:    { label: 'ベトナム語',     native: 'Vietnamese',              flag: '🇻🇳' },
+  id:    { label: 'インドネシア語', native: 'Indonesian',              flag: '🇮🇩' },
+};
+
+let busy = false;
+
+document.getElementById('lang-select').addEventListener('change', function () {
+  const lang = LANGS[this.value];
+  document.getElementById('mid-label').textContent = `${lang.flag} ${lang.label}翻訳`;
+  document.getElementById('flow-badge').textContent = `🇯🇵 日本語 → ${lang.flag} ${lang.label} → 🇯🇵 日本語`;
+  resetOutputs();
+});
+
+document.getElementById('input-ja').addEventListener('keydown', (e) => {
+  if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') runTranslation();
+});
+
+async function callAPI(prompt) {
+  const res = await fetch('/api/translate', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ prompt }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || `HTTP ${res.status}`);
+  }
+  const data = await res.json();
+  return data.text;
+}
+
+function setLoading(boxId, message) {
+  document.getElementById(boxId).innerHTML =
+    `<span class="output-loading"><span class="spinner"></span>${message}</span>`;
+}
+
+function setContent(boxId, text) {
+  document.getElementById(boxId).innerHTML =
+    `<span class="output-text">${escHtml(text)}</span>`;
+}
+
+function setEmpty(boxId) {
+  document.getElementById(boxId).innerHTML =
+    `<span class="output-empty">翻訳後に表示されます</span>`;
+}
+
+function escHtml(str) {
+  return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function levenshtein(a, b) {
+  const dp = Array.from({ length: b.length + 1 }, (_, i) => i);
+  for (let i = 1; i <= a.length; i++) {
+    let prev = i;
+    for (let j = 1; j <= b.length; j++) {
+      const val = a[i-1] === b[j-1] ? dp[j-1] : Math.min(dp[j-1], dp[j], prev) + 1;
+      dp[j-1] = prev; prev = val;
+    }
+    dp[b.length] = prev;
+  }
+  return dp[b.length];
+}
+
+function similarity(a, b) {
+  const longer = a.length >= b.length ? a : b;
+  const shorter = a.length >= b.length ? b : a;
+  if (!longer.length) return 1;
+  return (longer.length - levenshtein(longer, shorter)) / longer.length;
+}
+
+function setBusy(val) {
+  busy = val;
+  document.getElementById('btn-run').disabled = val;
+  document.getElementById('btn-clear').disabled = val;
+  document.getElementById('input-ja').disabled = val;
+  document.getElementById('lang-select').disabled = val;
+  document.getElementById('btn-run').textContent = val ? '翻訳中…' : '翻訳して確認する';
+}
+
+function showError(msg) {
+  const el = document.getElementById('error-box');
+  el.textContent = '⚠ ' + msg;
+  el.style.display = 'block';
+}
+
+function resetOutputs() {
+  setEmpty('output-mid');
+  setEmpty('output-back');
+  document.getElementById('diff-panel').style.display = 'none';
+  document.getElementById('error-box').style.display = 'none';
+}
+
+async function runTranslation() {
+  if (busy) return;
+  const text = document.getElementById('input-ja').value.trim();
+  if (!text) return;
+
+  const langCode = document.getElementById('lang-select').value;
+  const lang = LANGS[langCode];
+
+  setBusy(true);
+  resetOutputs();
+
+  // Step 1: JA → 選択言語
+  setLoading('output-mid', `${lang.label}に翻訳中…`);
+  let mid = '';
+  try {
+    mid = (await callAPI(
+      `Translate the following Japanese text into natural, accurate ${lang.native}. Output ONLY the translation, with no explanations or notes.\n\n${text}`
+    )).trim();
+    setContent('output-mid', mid);
+  } catch (e) {
+    setEmpty('output-mid');
+    showError(`${lang.label}への翻訳中にエラー: ${e.message}`);
+    setBusy(false);
+    return;
+  }
+
+  // Step 2: 選択言語 → JA
+  setLoading('output-back', '日本語に逆翻訳中…');
+  let back = '';
+  try {
+    back = (await callAPI(
+      `Translate the following ${lang.native} text into natural Japanese. Output ONLY the translation, with no explanations or notes.\n\n${mid}`
+    )).trim();
+    setContent('output-back', back);
+  } catch (e) {
+    setEmpty('output-back');
+    showError(`日本語への逆翻訳中にエラー: ${e.message}`);
+    setBusy(false);
+    return;
+  }
+
+  // 類似度
+  const score = Math.round(similarity(text, back) * 100);
+  const color = score >= 80 ? '#7eb87e' : score >= 50 ? '#e8d5a3' : '#c47e7e';
+  document.getElementById('sim-fill').style.width = score + '%';
+  document.getElementById('sim-fill').style.background = color;
+  document.getElementById('score-text').textContent = score + '%';
+  document.getElementById('score-text').style.color = color;
+  document.getElementById('diff-orig').textContent = text;
+  document.getElementById('diff-back').textContent = back;
+  document.getElementById('diff-panel').style.display = 'block';
+
+  setBusy(false);
+}
+
+function clearAll() {
+  document.getElementById('input-ja').value = '';
+  resetOutputs();
+}
+</script>
+</body>
+</html>
