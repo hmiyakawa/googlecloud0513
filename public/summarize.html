@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>要約・英訳ツール</title>
+<style>
+  :root {
+    --blue: #2b6cb0;
+    --bg: #f7f9fb;
+    --border: #d9dee3;
+  }
+  * { box-sizing: border-box; }
+  body {
+    font-family: "Hiragino Kaku Gothic ProN", "Meiryo", sans-serif;
+    background: var(--bg);
+    margin: 0;
+    padding: 24px;
+    color: #222;
+  }
+  h1 { font-size: 22px; margin-bottom: 4px; }
+  p.desc { color: #555; margin-top: 0; margin-bottom: 24px; }
+  .container {
+    max-width: 860px;
+    margin: 0 auto;
+  }
+  .step {
+    background: white;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 20px;
+    margin-bottom: 20px;
+  }
+  .step h2 {
+    font-size: 16px;
+    margin-top: 0;
+    color: var(--blue);
+  }
+  textarea {
+    width: 100%;
+    min-height: 160px;
+    padding: 10px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-size: 14px;
+    line-height: 1.6;
+    resize: vertical;
+    font-family: inherit;
+  }
+  .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 10px; }
+  button {
+    background: var(--blue);
+    color: white;
+    border: none;
+    padding: 10px 18px;
+    border-radius: 6px;
+    font-size: 14px;
+    cursor: pointer;
+  }
+  button:disabled { background: #a0aec0; cursor: not-allowed; }
+  button.secondary { background: white; color: var(--blue); border: 1px solid var(--blue); }
+  input[type="file"] { font-size: 14px; }
+  .status { font-size: 13px; color: #555; margin-top: 8px; min-height: 18px; }
+  .error { color: #c53030; }
+  .hint { font-size: 12px; color: #888; margin-top: 6px; }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>要約 → 手直し → 英訳ツール</h1>
+  <p class="desc">テキストを貼り付けるか、PDF/Wordファイルをアップロードして、要約 → 内容を編集 → 英語に翻訳、の順に進めます。</p>
+
+  <!-- ステップ1: 入力 -->
+  <div class="step">
+    <h2>ステップ1：元になる文章を用意する</h2>
+    <div class="row">
+      <input type="file" id="fileInput" accept=".pdf,.docx" />
+      <button id="loadFileBtn" class="secondary">ファイルから読み込む</button>
+    </div>
+    <p class="hint">対応形式：PDF（.pdf）、Word（.docx）。読み込むと下の欄に本文が入ります。</p>
+    <textarea id="sourceText" placeholder="ここに元の文章を貼り付けてください（ファイルを読み込んだ場合はここに自動で入ります）"></textarea>
+    <div class="row">
+      <button id="summarizeBtn">この文章を要約する</button>
+    </div>
+    <div class="status" id="sourceStatus"></div>
+  </div>
+
+  <!-- ステップ2: 要約(編集可能) -->
+  <div class="step" id="summaryStep" style="display:none;">
+    <h2>ステップ2：要約を確認・手直しする</h2>
+    <p class="hint">生成された要約はこのまま編集できます。内容を直してから次に進んでください。</p>
+    <textarea id="summaryText" placeholder="ここに要約が表示されます"></textarea>
+    <div class="row">
+      <button id="translateBtn">この内容を英語に翻訳する</button>
+    </div>
+    <div class="status" id="summaryStatus"></div>
+  </div>
+
+  <!-- ステップ3: 英訳結果 -->
+  <div class="step" id="translationStep" style="display:none;">
+    <h2>ステップ3：英訳結果</h2>
+    <textarea id="translationText" readonly></textarea>
+    <div class="row">
+      <button id="copyBtn" class="secondary">コピーする</button>
+    </div>
+    <div class="status" id="translationStatus"></div>
+  </div>
+</div>
+
+<script>
+  const $ = (id) => document.getElementById(id);
+
+  async function callApi(path, options) {
+    const res = await fetch(path, options);
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(data.error || 'エラーが発生しました。');
+    }
+    return data;
+  }
+
+  // ファイルからテキストを抽出
+  $('loadFileBtn').addEventListener('click', async () => {
+    const file = $('fileInput').files[0];
+    const statusEl = $('sourceStatus');
+    if (!file) {
+      statusEl.textContent = 'ファイルを選択してください。';
+      statusEl.className = 'status error';
+      return;
+    }
+    statusEl.textContent = 'ファイルを読み込んでいます…';
+    statusEl.className = 'status';
+    $('loadFileBtn').disabled = true;
+
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      const data = await callApi('/api/extract-text', { method: 'POST', body: formData });
+      $('sourceText').value = data.text;
+      statusEl.textContent = '読み込みが完了しました。';
+    } catch (err) {
+      statusEl.textContent = err.message;
+      statusEl.className = 'status error';
+    } finally {
+      $('loadFileBtn').disabled = false;
+    }
+  });
+
+  // 要約する
+  $('summarizeBtn').addEventListener('click', async () => {
+    const text = $('sourceText').value;
+    const statusEl = $('sourceStatus');
+    if (!text.trim()) {
+      statusEl.textContent = '文章を入力してください。';
+      statusEl.className = 'status error';
+      return;
+    }
+    statusEl.textContent = '要約を生成しています…（数秒〜数十秒かかります）';
+    statusEl.className = 'status';
+    $('summarizeBtn').disabled = true;
+
+    try {
+      const data = await callApi('/api/summarize', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text }),
+      });
+      $('summaryText').value = data.summary;
+      $('summaryStep').style.display = 'block';
+      $('summaryStep').scrollIntoView({ behavior: 'smooth' });
+      statusEl.textContent = '要約が完了しました。';
+    } catch (err) {
+      statusEl.textContent = err.message;
+      statusEl.className = 'status error';
+    } finally {
+      $('summarizeBtn').disabled = false;
+    }
+  });
+
+  // 英訳する
+  $('translateBtn').addEventListener('click', async () => {
+    const text = $('summaryText').value;
+    const statusEl = $('summaryStatus');
+    if (!text.trim()) {
+      statusEl.textContent = '要約内容が空です。';
+      statusEl.className = 'status error';
+      return;
+    }
+    statusEl.textContent = '翻訳しています…';
+    statusEl.className = 'status';
+    $('translateBtn').disabled = true;
+
+    try {
+      const data = await callApi('/api/translate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text }),
+      });
+      $('translationText').value = data.translation;
+      $('translationStep').style.display = 'block';
+      $('translationStep').scrollIntoView({ behavior: 'smooth' });
+      statusEl.textContent = '翻訳が完了しました。';
+    } catch (err) {
+      statusEl.textContent = err.message;
+      statusEl.className = 'status error';
+    } finally {
+      $('translateBtn').disabled = false;
+    }
+  });
+
+  // コピー
+  $('copyBtn').addEventListener('click', async () => {
+    const statusEl = $('translationStatus');
+    try {
+      await navigator.clipboard.writeText($('translationText').value);
+      statusEl.textContent = 'コピーしました。';
+    } catch (err) {
+      statusEl.textContent = 'コピーに失敗しました。手動で選択してコピーしてください。';
+      statusEl.className = 'status error';
+    }
+  });
+</script>
+</body>
+</html>
