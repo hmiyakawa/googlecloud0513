@@ -209,11 +209,15 @@
   });
 
   // コピー
-  $('copyBtn').addEventListener('click', async () => {
+$('copyBtn').addEventListener('click', () => {
     const statusEl = $('translationStatus');
+    const textarea = $('translationText');
+    textarea.select();
+    textarea.setSelectionRange(0, 99999);
     try {
-      await navigator.clipboard.writeText($('translationText').value);
+      document.execCommand('copy');
       statusEl.textContent = 'コピーしました。';
+      statusEl.className = 'status';
     } catch (err) {
       statusEl.textContent = 'コピーに失敗しました。手動で選択してコピーしてください。';
       statusEl.className = 'status error';
