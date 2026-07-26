@@ -95,7 +95,7 @@ app.get('/auth/google',
 
 app.get('/auth/callback',
   passport.authenticate('google', { failureRedirect: '/login?error=denied' }),
-  (req, res) => res.redirect('/')
+(req, res) => res.redirect('/summarize.html')
 );
 
 app.get('/logout', (req, res) => {
