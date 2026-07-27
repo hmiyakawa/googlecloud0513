@@ -144,7 +144,7 @@ PAGE_TOP = """<!doctype html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>ファイル共有ツール</title>
+<title>ad-comm ファイル共有ツール</title>
 <style>
   * { box-sizing: border-box; }
   body { margin:0; font-family:-apple-system,"Hiragino Kaku Gothic ProN","Meiryo",sans-serif;
