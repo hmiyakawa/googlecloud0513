@@ -4,7 +4,7 @@ const path = require('path');
 const session = require('express-session');
 const passport = require('passport');
 const GoogleStrategy = require('passport-google-oauth20').Strategy;
-const apiRoutes = require('../routes/summarizeTranslate');
+const apiRoutes = require('./routes/summarizeTranslate');
 
 const app = express();
 const PORT = process.env.PORT || 8081;
@@ -39,7 +39,7 @@ app.use(passport.session());
 passport.use(new GoogleStrategy({
   clientID: process.env.GOOGLE_CLIENT_ID,
   clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-  callbackURL: 'http://tools.ad-comm.com:8081/auth/callback'
+  callbackURL: process.env.GOOGLE_CALLBACK_URL || `http://tools.ad-comm.com:${PORT}/auth/callback`
 }, (accessToken, refreshToken, profile, done) => {
   const email = profile.emails[0].value;
   if (!isAllowed(email)) {
@@ -95,7 +95,7 @@ app.get('/auth/google',
 
 app.get('/auth/callback',
   passport.authenticate('google', { failureRedirect: '/login?error=denied' }),
-(req, res) => res.redirect('/summarize.html')
+  (req, res) => res.redirect('/summarize.html')
 );
 
 app.get('/logout', (req, res) => {
@@ -105,7 +105,7 @@ app.get('/logout', (req, res) => {
 // 以降のルートはすべて認証必須
 app.use(express.json({ limit: '10mb' }));
 app.use(requireAuth);
-app.use(express.static(path.join(__dirname, '../public')));
+app.use(express.static(path.join(__dirname, 'public')));
 app.use('/', apiRoutes);
 
 app.get('/health', (req, res) => {
@@ -113,9 +113,9 @@ app.get('/health', (req, res) => {
 });
 
 app.get('*', (req, res) => {
-  res.sendFile(path.join(__dirname, '../public', 'summarize.html'));
+  res.sendFile(path.join(__dirname, 'public', 'summarize.html'));
 });
 
 app.listen(PORT, () => {
-  console.log(`✅ サーバー起動: http://localhost:${PORT}`);
+  console.log(`✅ 要約・英訳ツール 起動: http://localhost:${PORT}`);
 });
