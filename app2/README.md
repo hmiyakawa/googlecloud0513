@@ -13,12 +13,17 @@ app2/
 │   └── public/
 │       └── summarize.html
 │
-└── translate-checker/    ← 翻訳チェッカー（index.html）
-    ├── server.js
-    ├── package.json
-    ├── .env.example
-    └── public/
-        └── index.html
+├── translate-checker/    ← 翻訳チェッカー（index.html）
+│   ├── server.js
+│   ├── package.json
+│   ├── .env.example
+│   └── public/
+│       └── index.html
+│
+└── file-share/           ← ファイル共有ツール（Python/Flask）
+    ├── AD_File_share.py
+    ├── requirements.txt
+    └── .env.example
 ```
 
 ## 起動方法（各アプリ共通の手順）
@@ -64,6 +69,36 @@ Google Cloud Console 側のOAuth設定に、2つのコールバックURL
 `http://tools.ad-comm.com:8081/auth/callback` と
 `http://tools.ad-comm.com:8080/auth/callback`
 の両方が登録されているか一度確認してください。
+
+## file-share（ファイル共有ツール）の起動方法
+
+こちらはPython(Flask)製で、他の2つ(Node.js)とは仕組みが異なります。
+
+1. フォルダに移動する
+
+   ```
+   cd 選んだフォルダのパス/file-share
+   ```
+
+2. 必要なライブラリをインストールする（初回のみ）
+
+   ```
+   pip install -r requirements.txt
+   ```
+
+3. `.env.example` をコピーして `.env` を作り、`SECRET_KEY` と `ADMIN_PASSWORD` を自分の値に変更する
+
+   ```
+   cp .env.example .env
+   ```
+
+4. 起動する
+
+   ```
+   python3 AD_File_share.py
+   ```
+
+   `http://localhost:8082` にアクセスして、ログイン画面が出れば成功です。
 
 ## 今回何が起きていたか（簡単な説明）
 
