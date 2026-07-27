@@ -21,7 +21,7 @@ app2/
 │       └── index.html
 │
 └── file-share/           ← ファイル共有ツール（Python/Flask）
-    ├── AD_File_share.py
+    ├── fileshare.py
     ├── requirements.txt
     └── .env.example
 ```
@@ -83,7 +83,7 @@ Google Cloud Console 側のOAuth設定に、2つのコールバックURL
 2. 必要なライブラリをインストールする（初回のみ）
 
    ```
-   pip install -r requirements.txt
+   pip3 install -r requirements.txt --break-system-packages
    ```
 
 3. `.env.example` をコピーして `.env` を作り、`SECRET_KEY` と `ADMIN_PASSWORD` を自分の値に変更する
@@ -95,10 +95,60 @@ Google Cloud Console 側のOAuth設定に、2つのコールバックURL
 4. 起動する
 
    ```
-   python3 AD_File_share.py
+   python3 fileshare.py
    ```
 
    `http://localhost:8082` にアクセスして、ログイン画面が出れば成功です。
+
+## コードを更新して本番サーバー（VM）に反映する手順
+
+コードを直したいときは、いつも以下の流れになります。「ローカル(自分のMac)で直す → GitHubに送る → VM(Compute Engine)で最新版を取り込んで再起動」の3ステップです。
+
+### 1. ローカル(Mac)でファイルを編集する
+
+VS Codeやテキストエディタで、直したいファイル(例: `app2/file-share/fileshare.py`)を編集して保存する。
+
+### 2. GitHubに反映する（ターミナルまたはVS Code）
+
+ターミナルの場合:
+
+```
+cd /Users/hiroshim/Documents/googlecloud0513
+git add app2
+git commit -m "変更内容を書く（例: file-shareの管理画面を修正）"
+git push origin main
+```
+
+VS Codeの場合は、ソース管理パネルでコミットメッセージを入力して「コミット」→「Sync Changes（プッシュ）」でも同じことができます。
+
+### 3. VM（Compute Engine）に最新版を取り込む
+
+GCPコンソール → Compute Engine → 対象のVMの「SSH」ボタンでブラウザターミナルを開き、以下を実行する。
+
+```
+cd /home/hiroshi_miyakawa/googlecloud0513
+git pull origin main
+```
+
+その後、変更したアプリだけを再起動する。
+
+| アプリ | pm2でのプロセス名 | 再起動コマンド |
+|---|---|---|
+| 要約・英訳ツール | `summarizer` | `pm2 restart summarizer` |
+| 翻訳チェッカー | `translation-checker` | `pm2 restart translation-checker` |
+| ファイル共有ツール | `file-share` | `pm2 restart file-share` |
+
+Node.jsのアプリ(summarize-tool, translate-checker)で新しいライブラリを追加した場合は、再起動の前にそのフォルダで `npm install` が必要です。Pythonのアプリ(file-share)で `requirements.txt` を変更した場合は、再起動の前に `pip3 install -r requirements.txt --break-system-packages` が必要です。
+
+### 4. 確認する
+
+再起動後、ログにエラーが出ていないか確認する。
+
+```
+pm2 logs <プロセス名> --lines 30
+```
+
+問題なければ、ブラウザで該当のURL(`http://tools.ad-comm.com:8080/8081/8082`)を開いて動作を確認する。
 
 ## 今回何が起きていたか（簡単な説明）
 
