@@ -1,13 +1,14 @@
 # -*- coding: utf-8 -*-
 """
-ファイル共有ツール（第2版）
+ファイル共有ツール（第3版）
 
 できること：
   - アップロードする人：ad-comm.com のGoogleアカウントでログインが必要
-  - ダウンロードする人：アカウント登録は不要。ファイルごとに設定されたID/パスワードを
+  - ダウンロードする人：アカウント登録は不要。ダウンロードID/パスワードを
     知っていれば誰でもダウンロードできる
-  - アップロード時に、そのファイル専用のダウンロード用ID/パスワードを自分で決める
-  - 自分がアップロードしたファイルは自分で削除できる
+  - 1回のアップロードで複数ファイルをまとめて選択できる（最大10GB）
+  - 複数ファイルをアップロードした場合、ダウンロード時はZIPにまとめて渡す
+  - 自分がアップロードしたファイル一式は自分で削除できる
 
 必要なもの：
   - Python 3.9 以上
@@ -15,26 +16,29 @@
     （pip install -r requirements.txt でインストール）
 
 起動設定（.env で変更可能。詳しくは .env.example を参照）：
-  - PORT                  : 待ち受けポート（デフォルト 8082）
+  - PORT                  : 待ち受けポート（デフォルト 8083）
+  
   - SECRET_KEY            : セッション暗号化キー（公開前に必ず変更してください）
   - ADMIN_USERNAME        : 管理画面ログインID（デフォルト admin）
   - ADMIN_PASSWORD        : 管理画面初期パスワード（公開前に必ず変更してください）
   - GOOGLE_CLIENT_ID      : Google OAuth クライアントID
   - GOOGLE_CLIENT_SECRET  : Google OAuth クライアントシークレット
   - ALLOWED_GOOGLE_DOMAIN : アップロードを許可するGoogleドメイン（デフォルト ad-comm.com）
-  - BASE_URL              : このアプリの外部URL（例: http://tools.ad-comm.com:8082）
+  - BASE_URL              : このアプリの外部URL（例: http://tools.ad-comm.com:8083）
 """
 
+import io
 import os
 import sqlite3
 import uuid
+import zipfile
 from datetime import datetime
 from functools import wraps
 
 from dotenv import load_dotenv
 from flask import (
     Flask, request, redirect, url_for, session,
-    render_template_string, send_from_directory, flash, abort
+    render_template_string, send_from_directory, send_file, flash, abort
 )
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
@@ -46,7 +50,7 @@ load_dotenv()  # 同じフォルダの .env を読み込む
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 UPLOAD_DIR = os.path.join(BASE_DIR, "uploads")    # 実ファイルの保存先フォルダ
 DB_PATH = os.path.join(BASE_DIR, "database.db")   # ファイル情報のデータベース
-MAX_CONTENT_LENGTH = 10 * 1024 * 1024 * 1024           # 1ファイルの上限（10GB）
+MAX_CONTENT_LENGTH = 10 * 1024 * 1024 * 1024      # 1ファイルの上限（10GB）
 
 PORT = int(os.environ.get("PORT", 8082))
 
@@ -86,21 +90,31 @@ def get_db():
 
 
 def init_db():
-    """最初に一度だけ、必要な表（テーブル）を作る"""
+    """最初に一度だけ、必要な表（テーブル）を作る
+
+    シェア（1回のアップロード操作）と、その中に含まれる複数ファイルを
+    別々の表で管理する。
+    """
     conn = get_db()
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS shares (
+            id             INTEGER PRIMARY KEY AUTOINCREMENT,
+            download_id    TEXT UNIQUE NOT NULL, -- ダウンロード用ID（相手に伝える名前）
+            password_hash  TEXT NOT NULL,        -- ダウンロード用パスワードの暗号化済みハッシュ
+            uploader_email TEXT NOT NULL,        -- アップロードしたGoogleアカウントのメールアドレス
+            uploaded_at    TEXT NOT NULL         -- アップロード日時
+        )
+    """)
     conn.execute("""
         CREATE TABLE IF NOT EXISTS files (
             id             INTEGER PRIMARY KEY AUTOINCREMENT,
-            stored_name    TEXT NOT NULL,   -- 保存時の実ファイル名（重複防止のためUUID付き）
-            original_name  TEXT NOT NULL,   -- 元のファイル名（表示・DL用）
-            uploader_email TEXT NOT NULL,   -- アップロードしたGoogleアカウントのメールアドレス
-            download_id    TEXT UNIQUE NOT NULL, -- ダウンロード用ID（相手に伝える名前）
-            password_hash  TEXT NOT NULL,   -- ダウンロード用パスワードの暗号化済みハッシュ
-            uploaded_at    TEXT NOT NULL,   -- アップロード日時
-            size           INTEGER NOT NULL -- ファイルサイズ（バイト）
+            share_id       INTEGER NOT NULL,     -- shares.id への参照
+            stored_name    TEXT NOT NULL,        -- 保存時の実ファイル名（重複防止のためUUID付き）
+            original_name  TEXT NOT NULL,        -- 元のファイル名（表示・DL用）
+            size           INTEGER NOT NULL,     -- ファイルサイズ（バイト）
+            FOREIGN KEY (share_id) REFERENCES shares (id)
         )
     """)
-
     conn.commit()
     conn.close()
 
@@ -188,6 +202,7 @@ PAGE_TOP = """<!doctype html>
   a.btn-google:hover { background:#f9fafb; }
   .domain-hint { font-size:12px; color:#9ca3af; text-align:center; margin-top:8px; }
   .lead { color:#4b5563; font-size:14px; margin-bottom:20px; }
+  .file-list { font-size:13px; color:#4b5563; margin:6px 0 0; padding-left:18px; }
 </style>
 </head>
 <body>
@@ -235,7 +250,7 @@ GOOGLE_ICON_SVG = """<svg width="18" height="18" viewBox="0 0 48 48">
 HOME_BODY = """
 <div class="card">
   <h2>ファイルをダウンロードする</h2>
-  <p class="lead">提供されたID/パスワードを入力してください。</p>
+  <p class="lead">提供されたIDとパスワードを入力してください。</p>
   <form method="post" action="{{ url_for('download_lookup') }}" class="auth" style="margin:0;">
     <label>ダウンロードID<input type="text" name="download_id" required autofocus></label>
     <label>パスワード<input type="password" name="password" required></label>
@@ -245,13 +260,13 @@ HOME_BODY = """
 
 <div class="card">
   <h2>ファイルをアップロードする</h2>
-  <p class="lead">アップロードには {{ allowed_domain }} の組織アカウントでのログインが必要です。</p>
+  <p class="lead">アップロードには {{ allowed_domain }} のGoogleアカウントでのログインが必要です。</p>
   {% if session.uploader_email %}
     <a class="btn-download" href="{{ url_for('upload_page') }}">アップロード画面へ</a>
   {% else %}
     <a class="btn-google" href="{{ url_for('uploader_login') }}">
       """ + GOOGLE_ICON_SVG + """
-      {{ allowed_domain }} のアカウントでログイン
+      {{ allowed_domain }} のGoogleアカウントでログイン
     </a>
     <p class="domain-hint">※ @{{ allowed_domain }} のメールアドレスのみログインできます</p>
   {% endif %}
@@ -261,8 +276,10 @@ HOME_BODY = """
 UPLOAD_BODY = """
 <div class="card">
   <h2>ファイルをアップロード</h2>
-  <p class="hint">複数ファイルをまとめて選択できます。同じダウンロードID/パスワードでまとめてダウンロードできるようになります。
-  ダウンロードしたい相手にそのIDとパスワード、URL(http://tools.ad-comm.com:8083/)を伝えてください。（ファイルは最大10GB）</p>
+  <p class="hint">複数ファイルをまとめて選択できます（1ファイルあたり最大10GB）。
+  アップロード時に、ダウンロード用のID/パスワードを自分で決めてください。
+  ダウンロードしたい相手にそのIDとパスワード、そしてこのサイトのURLを伝えてください。
+  複数ファイルをまとめてアップロードした場合、相手はZIPファイルとしてまとめてダウンロードします。</p>
   <form method="post" action="{{ url_for('upload') }}" enctype="multipart/form-data" class="upload-form">
     <label>ファイル（複数選択可）<input type="file" name="files" multiple required></label>
     <label>ダウンロードID（半角英数字。相手に伝える名前）<input type="text" name="download_id" required placeholder="例: sales-report-2026"></label>
@@ -273,21 +290,26 @@ UPLOAD_BODY = """
 
 <div class="card">
   <h2>あなたがアップロードしたファイル</h2>
-  {% if files %}
+  {% if shares %}
   <table>
     <thead>
-      <tr><th>ファイル名</th><th>ダウンロードID</th><th>サイズ</th><th>日時</th><th></th></tr>
+      <tr><th>ダウンロードID</th><th>ファイル</th><th>合計サイズ</th><th>日時</th><th></th></tr>
     </thead>
     <tbody>
-      {% for f in files %}
+      {% for s in shares %}
       <tr>
-        <td>{{ f.original_name }}</td>
-        <td>{{ f.download_id }}</td>
-        <td>{{ f.size | filesize }}</td>
-        <td>{{ f.uploaded_at }}</td>
+        <td>{{ s.download_id }}</td>
+        <td>
+          {{ s.files|length }}件
+          <ul class="file-list">
+            {% for f in s.files %}<li>{{ f.original_name }}</li>{% endfor %}
+          </ul>
+        </td>
+        <td>{{ s.total_size | filesize }}</td>
+        <td>{{ s.uploaded_at }}</td>
         <td class="actions">
-          <form method="post" action="{{ url_for('delete', file_id=f.id) }}"
-                onsubmit="return confirm('このファイルを削除しますか？');" style="display:inline">
+          <form method="post" action="{{ url_for('delete_share', share_id=s.id) }}"
+                onsubmit="return confirm('このファイル一式を削除しますか？');" style="display:inline">
             <button class="btn-delete" type="submit">削除</button>
           </form>
         </td>
@@ -304,13 +326,14 @@ UPLOAD_BODY = """
 DOWNLOAD_RESULT_BODY = """
 <div class="card">
   <h2>ファイルが見つかりました</h2>
-  <table>
-    <tr><th>ファイル名</th><td>{{ file.original_name }}</td></tr>
-    <tr><th>サイズ</th><td>{{ file.size | filesize }}</td></tr>
-    <tr><th>アップロード日時</th><td>{{ file.uploaded_at }}</td></tr>
-  </table>
+  <p class="hint">{{ share.files|length }}件のファイル（合計 {{ share.total_size | filesize }}）</p>
+  <ul class="file-list">
+    {% for f in share.files %}<li>{{ f.original_name }}（{{ f.size | filesize }}）</li>{% endfor %}
+  </ul>
   <div style="margin-top:16px;">
-    <a class="btn-download" href="{{ url_for('download', file_id=file.id, token=token) }}">ダウンロードする</a>
+    <a class="btn-download" href="{{ url_for('download', share_id=share.id) }}">
+      {% if share.files|length > 1 %}ZIPでまとめてダウンロード{% else %}ダウンロードする{% endif %}
+    </a>
   </div>
 </div>
 """
@@ -329,19 +352,19 @@ ADMIN_LOGIN_BODY = """
 ADMIN_BODY = """
 <div class="card">
   <h2>アップロードされた全ファイル</h2>
-  {% if files %}
+  {% if shares %}
   <table>
     <thead>
-      <tr><th>ファイル名</th><th>ダウンロードID</th><th>サイズ</th><th>アップロード者</th><th>日時</th></tr>
+      <tr><th>ダウンロードID</th><th>ファイル数</th><th>合計サイズ</th><th>アップロード者</th><th>日時</th></tr>
     </thead>
     <tbody>
-      {% for f in files %}
+      {% for s in shares %}
       <tr>
-        <td>{{ f.original_name }}</td>
-        <td>{{ f.download_id }}</td>
-        <td>{{ f.size | filesize }}</td>
-        <td>{{ f.uploader_email }}</td>
-        <td>{{ f.uploaded_at }}</td>
+        <td>{{ s.download_id }}</td>
+        <td>{{ s.files|length }}</td>
+        <td>{{ s.total_size | filesize }}</td>
+        <td>{{ s.uploader_email }}</td>
+        <td>{{ s.uploaded_at }}</td>
       </tr>
       {% endfor %}
     </tbody>
@@ -351,6 +374,20 @@ ADMIN_BODY = """
   {% endif %}
 </div>
 """
+
+
+# ---- 補助関数：シェアと紐づくファイル一覧をまとめて取得する ----------------
+def load_share_with_files(conn, share_row):
+    """1件のシェア（shares 表の行）に、紐づく files をまとめて付与して返す"""
+    files = conn.execute(
+        "SELECT * FROM files WHERE share_id = ? ORDER BY id", (share_row["id"],)
+    ).fetchall()
+    total_size = sum(f["size"] for f in files)
+    # sqlite3.Row は直接属性追加できないため、dict に変換して拡張する
+    share = dict(share_row)
+    share["files"] = files
+    share["total_size"] = total_size
+    return share
 
 
 # ---- トップページ ----------------------------------------------------------
@@ -438,22 +475,24 @@ def uploader_logout():
 @uploader_required
 def upload_page():
     conn = get_db()
-    files = conn.execute(
-        "SELECT * FROM files WHERE uploader_email = ? ORDER BY id DESC",
+    share_rows = conn.execute(
+        "SELECT * FROM shares WHERE uploader_email = ? ORDER BY id DESC",
         (session["uploader_email"],),
     ).fetchall()
+    shares = [load_share_with_files(conn, s) for s in share_rows]
     conn.close()
-    return render_template_string(layout(UPLOAD_BODY), files=files)
+    return render_template_string(layout(UPLOAD_BODY), shares=shares)
 
 
 @app.route("/upload", methods=["POST"])
 @uploader_required
 def upload():
-    file = request.files.get("file")
+    files = request.files.getlist("files")
     download_id = request.form.get("download_id", "").strip()
     download_password = request.form.get("download_password", "")
 
-    if not file or file.filename == "":
+    files = [f for f in files if f and f.filename]
+    if not files:
         flash("ファイルが選択されていません。")
         return redirect(url_for("upload_page"))
     if not download_id or not download_password:
@@ -461,58 +500,70 @@ def upload():
         return redirect(url_for("upload_page"))
 
     conn = get_db()
-    exists = conn.execute("SELECT 1 FROM files WHERE download_id = ?", (download_id,)).fetchone()
+    exists = conn.execute("SELECT 1 FROM shares WHERE download_id = ?", (download_id,)).fetchone()
     if exists:
         conn.close()
         flash("そのダウンロードIDは既に使われています。別のIDにしてください。")
         return redirect(url_for("upload_page"))
 
-    original_name = file.filename
-    safe = secure_filename(original_name)  # 危険な文字を取り除く
-    if safe == "":                         # 日本語だけの名前などで空になった場合の保険
-        safe = "file"
-    stored_name = f"{uuid.uuid4().hex}_{safe}"  # 実際にディスクへ保存する名前（重複防止）
-
-    path = os.path.join(UPLOAD_DIR, stored_name)
-    file.save(path)
-    size = os.path.getsize(path)
-
-    conn.execute(
-        "INSERT INTO files (stored_name, original_name, uploader_email, download_id, "
-        "password_hash, uploaded_at, size) VALUES (?, ?, ?, ?, ?, ?, ?)",
-        (stored_name, original_name, session["uploader_email"], download_id,
-         generate_password_hash(download_password),
-         datetime.now().strftime("%Y-%m-%d %H:%M"), size),
+    cur = conn.execute(
+        "INSERT INTO shares (download_id, password_hash, uploader_email, uploaded_at) "
+        "VALUES (?, ?, ?, ?)",
+        (download_id, generate_password_hash(download_password),
+         session["uploader_email"], datetime.now().strftime("%Y-%m-%d %H:%M")),
     )
+    share_id = cur.lastrowid
+
+    for file in files:
+        original_name = file.filename
+        safe = secure_filename(original_name)  # 危険な文字を取り除く
+        if safe == "":                         # 日本語だけの名前などで空になった場合の保険
+            safe = "file"
+        stored_name = f"{uuid.uuid4().hex}_{safe}"  # 実際にディスクへ保存する名前（重複防止）
+
+        path = os.path.join(UPLOAD_DIR, stored_name)
+        file.save(path)
+        size = os.path.getsize(path)
+
+        conn.execute(
+            "INSERT INTO files (share_id, stored_name, original_name, size) VALUES (?, ?, ?, ?)",
+            (share_id, stored_name, original_name, size),
+        )
+
     conn.commit()
     conn.close()
-    flash("アップロードしました。相手にダウンロードIDとパスワードを伝えてください。")
+    flash(f"{len(files)}件のファイルをアップロードしました。相手にダウンロードIDとパスワードを伝えてください。")
     return redirect(url_for("upload_page"))
 
 
-@app.route("/delete/<int:file_id>", methods=["POST"])
+@app.route("/delete/<int:share_id>", methods=["POST"])
 @uploader_required
-def delete(file_id):
+def delete_share(share_id):
     conn = get_db()
-    row = conn.execute("SELECT * FROM files WHERE id = ?", (file_id,)).fetchone()
-    if row is None:
+    share_row = conn.execute("SELECT * FROM shares WHERE id = ?", (share_id,)).fetchone()
+    if share_row is None:
         conn.close()
         abort(404)
-    if row["uploader_email"] != session["uploader_email"]:  # 自分のファイル以外は削除させない
+    if share_row["uploader_email"] != session["uploader_email"]:  # 自分のもの以外は削除させない
         conn.close()
         abort(403)
-    try:
-        os.remove(os.path.join(UPLOAD_DIR, row["stored_name"]))
-    except FileNotFoundError:
-        pass
-    conn.execute("DELETE FROM files WHERE id = ?", (file_id,))
+
+    file_rows = conn.execute("SELECT * FROM files WHERE share_id = ?", (share_id,)).fetchall()
+    for f in file_rows:
+        try:
+            os.remove(os.path.join(UPLOAD_DIR, f["stored_name"]))
+        except FileNotFoundError:
+            pass
+
+    conn.execute("DELETE FROM files WHERE share_id = ?", (share_id,))
+    conn.execute("DELETE FROM shares WHERE id = ?", (share_id,))
     conn.commit()
     conn.close()
     flash("削除しました。")
     return redirect(url_for("upload_page"))
 
 
-# ---- ダウンロード（アカウント不要、ファイルごとのID/パスワードのみ） --------
+# ---- ダウンロード（アカウント不要、シェアごとのID/パスワードのみ） ----------
 @app.route("/download-lookup", methods=["POST"])
 def download_lookup():
     download_id = request.form.get("download_id", "").strip()
@@ -523,37 +574,58 @@ def download_lookup():
         return redirect(url_for("home"))
 
     conn = get_db()
-    row = conn.execute("SELECT * FROM files WHERE download_id = ?", (download_id,)).fetchone()
-    conn.close()
+    share_row = conn.execute("SELECT * FROM shares WHERE download_id = ?", (download_id,)).fetchone()
 
-    if row is None or not check_password_hash(row["password_hash"], password):
+    if share_row is None or not check_password_hash(share_row["password_hash"], password):
+        conn.close()
         flash("ダウンロードIDまたはパスワードが違います。")
         return redirect(url_for("home"))
 
+    share = load_share_with_files(conn, share_row)
+    conn.close()
+
     # ダウンロードURLを推測されないよう、確認済みの合言葉としてセッションに一時保存する
-    session[f"download_ok_{row['id']}"] = True
-    return render_template_string(
-        layout(DOWNLOAD_RESULT_BODY), file=row, token=row["id"]
-    )
+    session[f"download_ok_{share['id']}"] = True
+    return render_template_string(layout(DOWNLOAD_RESULT_BODY), share=share)
 
 
-@app.route("/download/<int:file_id>")
-def download(file_id):
+@app.route("/download/<int:share_id>")
+def download(share_id):
     # 直前に download-lookup でパスワード確認が済んでいる場合のみ許可する
-    if not session.get(f"download_ok_{file_id}"):
+    if not session.get(f"download_ok_{share_id}"):
         flash("先にダウンロードIDとパスワードを入力してください。")
         return redirect(url_for("home"))
 
     conn = get_db()
-    row = conn.execute("SELECT * FROM files WHERE id = ?", (file_id,)).fetchone()
+    share_row = conn.execute("SELECT * FROM shares WHERE id = ?", (share_id,)).fetchone()
+    if share_row is None:
+        conn.close()
+        abort(404)
+    file_rows = conn.execute(
+        "SELECT * FROM files WHERE share_id = ? ORDER BY id", (share_id,)
+    ).fetchall()
     conn.close()
-    if row is None:
+
+    if not file_rows:
         abort(404)
 
-    return send_from_directory(
-        UPLOAD_DIR, row["stored_name"],
-        as_attachment=True, download_name=row["original_name"],
-    )
+    # ファイルが1つだけならそのまま、複数ならZIPにまとめて返す
+    if len(file_rows) == 1:
+        f = file_rows[0]
+        return send_from_directory(
+            UPLOAD_DIR, f["stored_name"],
+            as_attachment=True, download_name=f["original_name"],
+        )
+
+    memory_zip = io.BytesIO()
+    with zipfile.ZipFile(memory_zip, "w", zipfile.ZIP_DEFLATED) as zf:
+        for f in file_rows:
+            zf.write(os.path.join(UPLOAD_DIR, f["stored_name"]), arcname=f["original_name"])
+    memory_zip.seek(0)
+
+    zip_name = f"{share_row['download_id']}.zip"
+    return send_file(memory_zip, as_attachment=True, download_name=zip_name,
+                      mimetype="application/zip")
 
 
 # ---- 管理画面（全ファイルの一覧のみ。ID/パスワードでログイン） --------------
@@ -581,14 +653,15 @@ def admin_logout():
 @admin_required
 def admin():
     conn = get_db()
-    files = conn.execute("SELECT * FROM files ORDER BY id DESC").fetchall()
+    share_rows = conn.execute("SELECT * FROM shares ORDER BY id DESC").fetchall()
+    shares = [load_share_with_files(conn, s) for s in share_rows]
     conn.close()
-    return render_template_string(layout(ADMIN_BODY), files=files)
+    return render_template_string(layout(ADMIN_BODY), shares=shares)
 
 
 @app.errorhandler(413)
 def too_large(e):
-    body = "<div class='card'><p>ファイルが大きすぎます（最大10GBまで）。</p>" \
+    body = "<div class='card'><p>ファイルが大きすぎます（1ファイルあたり最大10GBまで）。</p>" \
            "<a href='/'>トップへ戻る</a></div>"
     return render_template_string(layout(body)), 413
 
