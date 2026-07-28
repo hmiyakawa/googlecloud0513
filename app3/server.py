@@ -262,7 +262,7 @@ UPLOAD_BODY = """
 <div class="card">
   <h2>ファイルをアップロード</h2>
   <p class="hint">複数ファイルをまとめて選択できます。同じダウンロードID/パスワードでまとめてダウンロードできるようになります。
-  ダウンロードしたい相手にそのIDとパスワード、そしてこのサイトのURLを伝えてください。（1ファイルあたり最大10GB）</p>
+  ダウンロードしたい相手にそのIDとパスワード、URL<http://tools.ad-comm.com:8083/>を伝えてください。（ファイルは最大10GB）</p>
   <form method="post" action="{{ url_for('upload') }}" enctype="multipart/form-data" class="upload-form">
     <label>ファイル（複数選択可）<input type="file" name="files" multiple required></label>
     <label>ダウンロードID（半角英数字。相手に伝える名前）<input type="text" name="download_id" required placeholder="例: sales-report-2026"></label>
