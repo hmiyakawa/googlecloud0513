@@ -48,7 +48,7 @@ UPLOAD_DIR = os.path.join(BASE_DIR, "uploads")    # 実ファイルの保存先�
 DB_PATH = os.path.join(BASE_DIR, "database.db")   # ユーザー・ファイル情報のデータベース
 MAX_CONTENT_LENGTH = 1024 * 1024 * 1024           # 1ファイルの上限（1GB）
 
-PORT = int(os.environ.get("PORT", 8082))
+PORT = int(os.environ.get("PORT", 8083))
 
 # 管理者アカウント（管理画面で全アカウント・全ファイルを閲覧できます）
 # ※ .env の ADMIN_USERNAME / ADMIN_PASSWORD で上書きできます。公開前に必ず変更してください。
