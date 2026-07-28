@@ -15,14 +15,14 @@
     （pip install -r requirements.txt でインストール）
 
 起動設定（.env で変更可能。詳しくは .env.example を参照）：
-  - PORT                  : 待ち受けポート（デフォルト 8082）
+  - PORT                  : 待ち受けポート（デフォルト 8083）
   - SECRET_KEY            : セッション暗号化キー（公開前に必ず変更してください）
   - ADMIN_USERNAME        : 管理者ログインID（デフォルト admin）
   - ADMIN_PASSWORD        : 管理者初期パスワード（公開前に必ず変更してください）
   - GOOGLE_CLIENT_ID      : Google OAuth クライアントID
   - GOOGLE_CLIENT_SECRET  : Google OAuth クライアントシークレット
   - ALLOWED_GOOGLE_DOMAIN : Googleでの新規登録を許可するドメイン（デフォルト ad-comm.com）
-  - BASE_URL              : このアプリの外部URL（例: http://tools.ad-comm.com:8082）
+  - BASE_URL              : このアプリの外部URL（例: http://tools.ad-comm.com:8083）
 """
 
 import os
