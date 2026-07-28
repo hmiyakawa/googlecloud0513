@@ -144,7 +144,7 @@ PAGE_TOP = """<!doctype html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>ad-comm ファイル共有ツール</title>
+<title>ファイル共有ツール</title>
 <style>
   * { box-sizing: border-box; }
   body { margin:0; font-family:-apple-system,"Hiragino Kaku Gothic ProN","Meiryo",sans-serif;
@@ -183,7 +183,7 @@ PAGE_TOP = """<!doctype html>
 </head>
 <body>
 <header class="topbar">
-  <a href="{{ url_for('index') }}" class="brand">📁 ファイル共有ツール</a>
+  <a href="{{ url_for('index') }}" class="brand">📁 ad-commファイル共有ツール</a>
   <nav>
     {% if session.username %}
       {% if session.is_admin %}<a href="{{ url_for('admin') }}">管理画面</a>{% endif %}
