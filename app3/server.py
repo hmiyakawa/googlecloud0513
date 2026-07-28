@@ -260,7 +260,7 @@ HOME_BODY = """
 
 <div class="card">
   <h2>ファイルをアップロードする</h2>
-  <p class="lead">アップロードには {{ allowed_domain }} のGoogleアカウントでのログインが必要です。</p>
+  <p class="lead">アップロードには {{ allowed_domain }} のアカウントでのログインが必要です。</p>
   {% if session.uploader_email %}
     <a class="btn-download" href="{{ url_for('upload_page') }}">アップロード画面へ</a>
   {% else %}
