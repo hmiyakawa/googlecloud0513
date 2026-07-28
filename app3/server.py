@@ -3,8 +3,8 @@
 ファイル共有ツール
 
 できること：
-  - 利用者ごとにアカウントを作成（新規登録／ログイン）
-  - 新規登録は「ID/パスワード」または「ad-comm.com の Google アカウント」のどちらでも可能
+  - 新規登録は「ad-comm.com の Google アカウント」でのみ作成可能
+  - ログインは「Googleアカウント」または「ID/パスワード」のどちらでも可能
   - ログインした人だけがファイルをアップロード／ダウンロードできる
   - アップロードしたファイルは、ログインした全員で共有される
   - 自分がアップロードしたファイルは自分で削除できる
@@ -15,14 +15,14 @@
     （pip install -r requirements.txt でインストール）
 
 起動設定（.env で変更可能。詳しくは .env.example を参照）：
-  - PORT                  : 待ち受けポート（デフォルト 8083）
+  - PORT                  : 待ち受けポート（デフォルト 8082）
   - SECRET_KEY            : セッション暗号化キー（公開前に必ず変更してください）
   - ADMIN_USERNAME        : 管理者ログインID（デフォルト admin）
   - ADMIN_PASSWORD        : 管理者初期パスワード（公開前に必ず変更してください）
   - GOOGLE_CLIENT_ID      : Google OAuth クライアントID
   - GOOGLE_CLIENT_SECRET  : Google OAuth クライアントシークレット
   - ALLOWED_GOOGLE_DOMAIN : Googleでの新規登録を許可するドメイン（デフォルト ad-comm.com）
-  - BASE_URL              : このアプリの外部URL（例: http://tools.ad-comm.com:8083）
+  - BASE_URL              : このアプリの外部URL（例: http://tools.ad-comm.com:8082）
 """
 
 import os
@@ -46,16 +46,16 @@ load_dotenv()  # 同じフォルダの .env を読み込む
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 UPLOAD_DIR = os.path.join(BASE_DIR, "uploads")    # 実ファイルの保存先フォルダ
 DB_PATH = os.path.join(BASE_DIR, "database.db")   # ユーザー・ファイル情報のデータベース
-MAX_CONTENT_LENGTH = 10 * 1024 * 1024 * 1024           # 1ファイルの上限（1GB）
+MAX_CONTENT_LENGTH = 1024 * 1024 * 1024           # 1ファイルの上限（1GB）
 
-PORT = int(os.environ.get("PORT", 8083))
+PORT = int(os.environ.get("PORT", 8082))
 
 # 管理者アカウント（管理画面で全アカウント・全ファイルを閲覧できます）
 # ※ .env の ADMIN_USERNAME / ADMIN_PASSWORD で上書きできます。公開前に必ず変更してください。
 ADMIN_USERNAME = os.environ.get("ADMIN_USERNAME", "admin")
 ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "admin1234")
 
-# ---- Google OAuth 設定（新規登録専用） --------------------------------------
+# ---- Google OAuth 設定 ------------------------------------------------------
 GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID", "")
 GOOGLE_CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET", "")
 ALLOWED_GOOGLE_DOMAIN = os.environ.get("ALLOWED_GOOGLE_DOMAIN", "ad-comm.com")
@@ -64,7 +64,8 @@ BASE_URL = os.environ.get("BASE_URL", f"http://localhost:{PORT}")
 GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
 GOOGLE_USERINFO_URL = "https://www.googleapis.com/oauth2/v3/userinfo"
-GOOGLE_REDIRECT_URI = f"{BASE_URL}/register/google/callback"
+GOOGLE_REGISTER_REDIRECT_URI = f"{BASE_URL}/register/google/callback"
+GOOGLE_LOGIN_REDIRECT_URI = f"{BASE_URL}/login/google/callback"
 
 # ローカルの http でOAuthをテストする場合に必要（本番のhttpsでは不要）
 os.environ.setdefault("OAUTHLIB_INSECURE_TRANSPORT", "1")
@@ -115,7 +116,7 @@ def init_db():
     if "auth_provider" not in columns:
         conn.execute("ALTER TABLE users ADD COLUMN auth_provider TEXT NOT NULL DEFAULT 'local'")
 
-    # 管理者アカウントがまだ無ければ作成する
+    # 管理者アカウントがまだ無ければ作成する（管理者のみID/パスワードでログイン可能）
     exists = conn.execute("SELECT 1 FROM users WHERE username = ?", (ADMIN_USERNAME,)).fetchone()
     if exists is None:
         conn.execute(
@@ -247,6 +248,14 @@ def layout(body):
     return PAGE_TOP + body + PAGE_BOTTOM
 
 
+GOOGLE_ICON_SVG = """<svg width="18" height="18" viewBox="0 0 48 48">
+      <path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.4 29.3 35 24 35c-6.1 0-11-4.9-11-11s4.9-11 11-11c2.8 0 5.3 1 7.3 2.7l6-6C33.9 6.5 29.2 4.5 24 4.5 12.9 4.5 4 13.4 4 24.5s8.9 20 20 20 20-8.9 20-20c0-1.4-.1-2.7-.4-4z"/>
+      <path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.6 15.9 19 13 24 13c2.8 0 5.3 1 7.3 2.7l6-6C33.9 6.5 29.2 4.5 24 4.5c-7.8 0-14.5 4.4-17.7 10.2z"/>
+      <path fill="#4CAF50" d="M24 44.5c5.2 0 9.9-1.7 13.4-4.7l-6.2-5.2c-2 1.4-4.6 2.2-7.2 2.2-5.3 0-9.7-3.4-11.3-8.1l-6.5 5C9.5 39.9 16.2 44.5 24 44.5z"/>
+      <path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.1-4.1 5.4l6.2 5.2C40.9 36.1 44 30.8 44 24.5c0-1.4-.1-2.7-.4-4z"/>
+    </svg>"""
+
+
 # ---- 各画面の本文 ----------------------------------------------------------
 INDEX_BODY = """
 <div class="card">
@@ -294,6 +303,14 @@ INDEX_BODY = """
 LOGIN_BODY = """
 <div class="card auth">
   <h2>ログイン</h2>
+
+  <a class="btn-google" href="{{ url_for('login_google') }}">
+    """ + GOOGLE_ICON_SVG + """
+    Googleでログイン
+  </a>
+
+  <div class="divider">または</div>
+
   <form method="post">
     <label>ID<input type="text" name="username" required autofocus></label>
     <label>パスワード<input type="password" name="password" required></label>
@@ -308,23 +325,11 @@ REGISTER_BODY = """
   <h2>新規登録</h2>
 
   <a class="btn-google" href="{{ url_for('register_google') }}">
-    <svg width="18" height="18" viewBox="0 0 48 48">
-      <path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.4 29.3 35 24 35c-6.1 0-11-4.9-11-11s4.9-11 11-11c2.8 0 5.3 1 7.3 2.7l6-6C33.9 6.5 29.2 4.5 24 4.5 12.9 4.5 4 13.4 4 24.5s8.9 20 20 20 20-8.9 20-20c0-1.4-.1-2.7-.4-4z"/>
-      <path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.6 15.9 19 13 24 13c2.8 0 5.3 1 7.3 2.7l6-6C33.9 6.5 29.2 4.5 24 4.5c-7.8 0-14.5 4.4-17.7 10.2z"/>
-      <path fill="#4CAF50" d="M24 44.5c5.2 0 9.9-1.7 13.4-4.7l-6.2-5.2c-2 1.4-4.6 2.2-7.2 2.2-5.3 0-9.7-3.4-11.3-8.1l-6.5 5C9.5 39.9 16.2 44.5 24 44.5z"/>
-      <path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.1-4.1 5.4l6.2 5.2C40.9 36.1 44 30.8 44 24.5c0-1.4-.1-2.7-.4-4z"/>
-    </svg>
+    """ + GOOGLE_ICON_SVG + """
     {{ allowed_domain }} のGoogleアカウントで登録
   </a>
   <p class="domain-hint">※ @{{ allowed_domain }} のメールアドレスのみ登録できます</p>
 
-  <div class="divider">または</div>
-
-  <form method="post">
-    <label>ID<input type="text" name="username" required></label>
-    <label>パスワード<input type="password" name="password" required></label>
-    <button type="submit">IDとパスワードで登録する</button>
-  </form>
   <p class="switch">すでにアカウントをお持ちの方は <a href="{{ url_for('login') }}">ログイン</a></p>
 </div>
 """
@@ -404,28 +409,9 @@ def admin():
     return render_template_string(layout(ADMIN_BODY), users=users, files=files, counts=counts)
 
 
-@app.route("/register", methods=["GET", "POST"])
+@app.route("/register")
 def register():
-    if request.method == "POST":
-        username = request.form.get("username", "").strip()
-        password = request.form.get("password", "")
-        if not username or not password:
-            flash("IDとパスワードを入力してください。")
-            return redirect(url_for("register"))
-        conn = get_db()
-        exists = conn.execute("SELECT 1 FROM users WHERE username = ?", (username,)).fetchone()
-        if exists:
-            conn.close()
-            flash("そのIDは既に使われています。別のIDにしてください。")
-            return redirect(url_for("register"))
-        conn.execute(
-            "INSERT INTO users (username, password_hash, auth_provider) VALUES (?, ?, 'local')",
-            (username, generate_password_hash(password)),
-        )
-        conn.commit()
-        conn.close()
-        flash("登録しました。ログインしてください。")
-        return redirect(url_for("login"))
+    """新規登録画面。Googleアカウント（ad-comm.com）でのみ登録可能"""
     return render_template_string(layout(REGISTER_BODY), allowed_domain=ALLOWED_GOOGLE_DOMAIN)
 
 
@@ -438,7 +424,7 @@ def register_google():
 
     google = OAuth2Session(
         GOOGLE_CLIENT_ID,
-        redirect_uri=GOOGLE_REDIRECT_URI,
+        redirect_uri=GOOGLE_REGISTER_REDIRECT_URI,
         scope=["openid", "email", "profile"],
     )
     authorization_url, state = google.authorization_url(
@@ -466,7 +452,7 @@ def register_google_callback():
     try:
         google = OAuth2Session(
             GOOGLE_CLIENT_ID,
-            redirect_uri=GOOGLE_REDIRECT_URI,
+            redirect_uri=GOOGLE_REGISTER_REDIRECT_URI,
             state=session.get("oauth_state"),
         )
         google.fetch_token(
@@ -510,6 +496,70 @@ def register_google_callback():
     conn.close()
 
     # 登録と同時にそのままログインさせる
+    session["username"] = row["username"]
+    session["is_admin"] = bool(row["is_admin"])
+    return redirect(url_for("index"))
+
+
+@app.route("/login/google")
+def login_google():
+    """Googleアカウントでのログインを開始する"""
+    if not GOOGLE_CLIENT_ID or not GOOGLE_CLIENT_SECRET:
+        flash("Googleログインは現在利用できません。管理者にお問い合わせください。")
+        return redirect(url_for("login"))
+
+    google = OAuth2Session(
+        GOOGLE_CLIENT_ID,
+        redirect_uri=GOOGLE_LOGIN_REDIRECT_URI,
+        scope=["openid", "email", "profile"],
+    )
+    authorization_url, state = google.authorization_url(
+        GOOGLE_AUTH_URL,
+        access_type="offline",
+        prompt="select_account",
+    )
+    session["oauth_state"] = state
+    return redirect(authorization_url)
+
+
+@app.route("/login/google/callback")
+def login_google_callback():
+    """Googleログインのコールバック。既に登録済みのアカウントのみログインを許可する"""
+    if request.args.get("error"):
+        flash("ログインがキャンセルされました。")
+        return redirect(url_for("login"))
+
+    try:
+        google = OAuth2Session(
+            GOOGLE_CLIENT_ID,
+            redirect_uri=GOOGLE_LOGIN_REDIRECT_URI,
+            state=session.get("oauth_state"),
+        )
+        google.fetch_token(
+            GOOGLE_TOKEN_URL,
+            client_secret=GOOGLE_CLIENT_SECRET,
+            authorization_response=request.url,
+        )
+        userinfo = google.get(GOOGLE_USERINFO_URL).json()
+    except Exception:
+        flash("Google認証に失敗しました。もう一度お試しください。")
+        return redirect(url_for("login"))
+
+    email = userinfo.get("email", "")
+    email_verified = userinfo.get("email_verified", False)
+
+    if not email or not email_verified:
+        flash("Googleアカウントのメールアドレスが確認できませんでした。")
+        return redirect(url_for("login"))
+
+    conn = get_db()
+    row = conn.execute("SELECT * FROM users WHERE username = ?", (email,)).fetchone()
+    conn.close()
+
+    if row is None:
+        flash("このアカウントはまだ登録されていません。先に新規登録を行ってください。")
+        return redirect(url_for("register"))
+
     session["username"] = row["username"]
     session["is_admin"] = bool(row["is_admin"])
     return redirect(url_for("index"))
