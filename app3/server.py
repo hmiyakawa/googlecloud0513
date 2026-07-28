@@ -46,7 +46,7 @@ load_dotenv()  # 同じフォルダの .env を読み込む
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 UPLOAD_DIR = os.path.join(BASE_DIR, "uploads")    # 実ファイルの保存先フォルダ
 DB_PATH = os.path.join(BASE_DIR, "database.db")   # ファイル情報のデータベース
-MAX_CONTENT_LENGTH = 1024 * 1024 * 1024           # 1ファイルの上限（1GB）
+MAX_CONTENT_LENGTH = 10 * 1024 * 1024 * 1024           # 1ファイルの上限（10GB）
 
 PORT = int(os.environ.get("PORT", 8082))
 
@@ -235,7 +235,7 @@ GOOGLE_ICON_SVG = """<svg width="18" height="18" viewBox="0 0 48 48">
 HOME_BODY = """
 <div class="card">
   <h2>ファイルをダウンロードする</h2>
-  <p class="lead">共有されたファイル名とID/パスワードを入力してください。アカウント登録は不要です。</p>
+  <p class="lead">提供されたID/パスワードを入力してください。</p>
   <form method="post" action="{{ url_for('download_lookup') }}" class="auth" style="margin:0;">
     <label>ダウンロードID<input type="text" name="download_id" required autofocus></label>
     <label>パスワード<input type="password" name="password" required></label>
@@ -245,13 +245,13 @@ HOME_BODY = """
 
 <div class="card">
   <h2>ファイルをアップロードする</h2>
-  <p class="lead">アップロードには {{ allowed_domain }} のGoogleアカウントでのログインが必要です。</p>
+  <p class="lead">アップロードには {{ allowed_domain }} の組織アカウントでのログインが必要です。</p>
   {% if session.uploader_email %}
     <a class="btn-download" href="{{ url_for('upload_page') }}">アップロード画面へ</a>
   {% else %}
     <a class="btn-google" href="{{ url_for('uploader_login') }}">
       """ + GOOGLE_ICON_SVG + """
-      {{ allowed_domain }} のGoogleアカウントでログイン
+      {{ allowed_domain }} のアカウントでログイン
     </a>
     <p class="domain-hint">※ @{{ allowed_domain }} のメールアドレスのみログインできます</p>
   {% endif %}
@@ -261,10 +261,10 @@ HOME_BODY = """
 UPLOAD_BODY = """
 <div class="card">
   <h2>ファイルをアップロード</h2>
-  <p class="hint">アップロード時に、ダウンロード用のID/パスワードを自分で決めてください。
-  ダウンロードしたい相手にそのIDとパスワード、そしてこのサイトのURLを伝えてください。</p>
+  <p class="hint">複数ファイルをまとめて選択できます。同じダウンロードID/パスワードでまとめてダウンロードできるようになります。
+  ダウンロードしたい相手にそのIDとパスワード、そしてこのサイトのURLを伝えてください。（1ファイルあたり最大10GB）</p>
   <form method="post" action="{{ url_for('upload') }}" enctype="multipart/form-data" class="upload-form">
-    <label>ファイル<input type="file" name="file" required></label>
+    <label>ファイル（複数選択可）<input type="file" name="files" multiple required></label>
     <label>ダウンロードID（半角英数字。相手に伝える名前）<input type="text" name="download_id" required placeholder="例: sales-report-2026"></label>
     <label>ダウンロード用パスワード<input type="text" name="download_password" required placeholder="相手に伝えるパスワード"></label>
     <button type="submit">アップロードする</button>
@@ -588,7 +588,7 @@ def admin():
 
 @app.errorhandler(413)
 def too_large(e):
-    body = "<div class='card'><p>ファイルが大きすぎます（最大1GBまで）。</p>" \
+    body = "<div class='card'><p>ファイルが大きすぎます（最大10GBまで）。</p>" \
            "<a href='/'>トップへ戻る</a></div>"
     return render_template_string(layout(body)), 413
 
