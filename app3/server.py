@@ -46,7 +46,7 @@ load_dotenv()  # 同じフォルダの .env を読み込む
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 UPLOAD_DIR = os.path.join(BASE_DIR, "uploads")    # 実ファイルの保存先フォルダ
 DB_PATH = os.path.join(BASE_DIR, "database.db")   # ユーザー・ファイル情報のデータベース
-MAX_CONTENT_LENGTH = 1024 * 1024 * 1024           # 1ファイルの上限（1GB）
+MAX_CONTENT_LENGTH = 10 * 1024 * 1024 * 1024           # 1ファイルの上限（1GB）
 
 PORT = int(os.environ.get("PORT", 8083))
 
