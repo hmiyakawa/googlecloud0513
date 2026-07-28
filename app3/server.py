@@ -266,7 +266,7 @@ HOME_BODY = """
   {% else %}
     <a class="btn-google" href="{{ url_for('uploader_login') }}">
       """ + GOOGLE_ICON_SVG + """
-      {{ allowed_domain }} のGoogleアカウントでログイン
+      {{ allowed_domain }} のアカウントでログイン
     </a>
     <p class="domain-hint">※ @{{ allowed_domain }} のメールアドレスのみログインできます</p>
   {% endif %}
