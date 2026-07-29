@@ -39,7 +39,7 @@ app.use(passport.session());
 passport.use(new GoogleStrategy({
   clientID: process.env.GOOGLE_CLIENT_ID,
   clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-  callbackURL: process.env.GOOGLE_CALLBACK_URL || `http://tools.ad-comm.com:${PORT}/auth/callback`
+  callbackURL: process.env.GOOGLE_CALLBACK_URL || `https://tools.ad-comm.com/summarize/auth/callback`
 }, (accessToken, refreshToken, profile, done) => {
   const email = profile.emails[0].value;
   if (!isAllowed(email)) {
@@ -54,11 +54,11 @@ passport.deserializeUser((user, done) => done(null, user));
 // 認証チェックミドルウェア
 function requireAuth(req, res, next) {
   if (req.isAuthenticated()) return next();
-  res.redirect('/login');
+  res.redirect('/summarize/login');
 }
 
 // 認証ルート
-app.get('/login', (req, res) => {
+app.get('/summarize/login', (req, res) => {
   res.send(`
     <!DOCTYPE html>
     <html lang="ja">
@@ -82,33 +82,33 @@ app.get('/login', (req, res) => {
       <div class="box">
         <h1>AD-COMM Tools</h1>
         <p>組織のGoogleアカウントでログインしてください</p>
-        <a href="/auth/google">Googleでログイン</a>
+        <a href="/summarize/auth/google">Googleでログイン</a>
       </div>
     </body>
     </html>
   `);
 });
 
-app.get('/auth/google',
+app.get('/summarize/auth/google',
   passport.authenticate('google', { scope: ['profile', 'email'] })
 );
 
-app.get('/auth/callback',
+app.get('/summarize/auth/callback',
   passport.authenticate('google', { failureRedirect: '/login?error=denied' }),
-  (req, res) => res.redirect('/summarize.html')
+  (req, res) => res.redirect('/summarize/summarize.html')
 );
 
-app.get('/logout', (req, res) => {
-  req.logout(() => res.redirect('/login'));
+app.get('/summarize/logout', (req, res) => {
+  req.logout(() => res.redirect('/summarize/login'));
 });
 
 // 以降のルートはすべて認証必須
 app.use(express.json({ limit: '10mb' }));
 app.use(requireAuth);
-app.use(express.static(path.join(__dirname, 'public')));
-app.use('/', apiRoutes);
+app.use('/summarize', express.static(path.join(__dirname, 'public')));
+app.use('/summarize', apiRoutes);
 
-app.get('/health', (req, res) => {
+app.get('/summarize/health', (req, res) => {
   res.json({ status: 'ok' });
 });
 

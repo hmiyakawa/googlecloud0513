@@ -68,7 +68,7 @@ BASE_URL = os.environ.get("BASE_URL", f"http://localhost:{PORT}")
 GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
 GOOGLE_USERINFO_URL = "https://www.googleapis.com/oauth2/v3/userinfo"
-GOOGLE_REDIRECT_URI = f"{BASE_URL}/auth/google/callback"
+GOOGLE_REDIRECT_URI = f"{BASE_URL}/files/auth/google/callback"
 
 # ローカルの http でOAuthをテストする場合に必要（本番のhttpsでは不要）
 os.environ.setdefault("OAUTHLIB_INSECURE_TRANSPORT", "1")
@@ -391,13 +391,13 @@ def load_share_with_files(conn, share_row):
 
 
 # ---- トップページ ----------------------------------------------------------
-@app.route("/")
+@app.route("/files/")
 def home():
     return render_template_string(layout(HOME_BODY), allowed_domain=ALLOWED_GOOGLE_DOMAIN)
 
 
 # ---- アップロードする人のGoogleログイン ------------------------------------
-@app.route("/auth/google")
+@app.route("/files/auth/google")
 def uploader_login():
     """アップロードするためのGoogleログインを開始する（ad-comm.com のみ許可）"""
     if not GOOGLE_CLIENT_ID or not GOOGLE_CLIENT_SECRET:
@@ -419,7 +419,7 @@ def uploader_login():
     return redirect(authorization_url)
 
 
-@app.route("/auth/google/callback")
+@app.route("/files/auth/google/callback")
 def uploader_login_callback():
     """Googleからのコールバックを受け取り、ドメインを確認してログインさせる"""
     if not GOOGLE_CLIENT_ID or not GOOGLE_CLIENT_SECRET:
@@ -464,14 +464,14 @@ def uploader_login_callback():
     return redirect(url_for("upload_page"))
 
 
-@app.route("/auth/logout")
+@app.route("/files/auth/logout")
 def uploader_logout():
     session.pop("uploader_email", None)
     return redirect(url_for("home"))
 
 
 # ---- アップロード画面 -------------------------------------------------------
-@app.route("/upload")
+@app.route("/files/upload")
 @uploader_required
 def upload_page():
     conn = get_db()
@@ -484,7 +484,7 @@ def upload_page():
     return render_template_string(layout(UPLOAD_BODY), shares=shares)
 
 
-@app.route("/upload", methods=["POST"])
+@app.route("/files/upload", methods=["POST"])
 @uploader_required
 def upload():
     files = request.files.getlist("files")
@@ -536,7 +536,7 @@ def upload():
     return redirect(url_for("upload_page"))
 
 
-@app.route("/delete/<int:share_id>", methods=["POST"])
+@app.route("/files/delete/<int:share_id>", methods=["POST"])
 @uploader_required
 def delete_share(share_id):
     conn = get_db()
@@ -564,7 +564,7 @@ def delete_share(share_id):
 
 
 # ---- ダウンロード（アカウント不要、シェアごとのID/パスワードのみ） ----------
-@app.route("/download-lookup", methods=["POST"])
+@app.route("/files/download-lookup", methods=["POST"])
 def download_lookup():
     download_id = request.form.get("download_id", "").strip()
     password = request.form.get("password", "")
@@ -589,7 +589,7 @@ def download_lookup():
     return render_template_string(layout(DOWNLOAD_RESULT_BODY), share=share)
 
 
-@app.route("/download/<int:share_id>")
+@app.route("/files/download/<int:share_id>")
 def download(share_id):
     # 直前に download-lookup でパスワード確認が済んでいる場合のみ許可する
     if not session.get(f"download_ok_{share_id}"):
@@ -629,7 +629,7 @@ def download(share_id):
 
 
 # ---- 管理画面（全ファイルの一覧のみ。ID/パスワードでログイン） --------------
-@app.route("/admin/login", methods=["GET", "POST"])
+@app.route("/files/admin/login", methods=["GET", "POST"])
 def admin_login():
     if request.method == "POST":
         username = request.form.get("username", "").strip()
@@ -643,13 +643,13 @@ def admin_login():
     return render_template_string(layout(ADMIN_LOGIN_BODY))
 
 
-@app.route("/admin/logout")
+@app.route("/files/admin/logout")
 def admin_logout():
     session.pop("is_admin", None)
     return redirect(url_for("home"))
 
 
-@app.route("/admin")
+@app.route("/files/admin")
 @admin_required
 def admin():
     conn = get_db()
@@ -667,6 +667,7 @@ def too_large(e):
 
 
 # ---- アプリ起動 ------------------------------------------------------------
+
 if __name__ == "__main__":
     # host="0.0.0.0" = 外部（tools.ad-comm.com など）からアクセスできる状態
     # debug=False    = 本番公開のため、Flaskのデバッグモードは無効化しています

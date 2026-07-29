@@ -40,7 +40,7 @@ app.use(passport.session());
 passport.use(new GoogleStrategy({
   clientID: process.env.GOOGLE_CLIENT_ID,
   clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-  callbackURL: 'http://tools.ad-comm.com:8080/auth/callback'
+  callbackURL: 'https://tools.ad-comm.com/translate/auth/callback'
 }, (accessToken, refreshToken, profile, done) => {
   const email = profile.emails[0].value;
   if (!isAllowed(email)) {
@@ -55,11 +55,11 @@ passport.deserializeUser((user, done) => done(null, user));
 // 認証チェックミドルウェア
 function requireAuth(req, res, next) {
   if (req.isAuthenticated()) return next();
-  res.redirect('/login');
+  res.redirect('/translate/login');
 }
 
 // 認証ルート
-app.get('/login', (req, res) => {
+app.get('/translate/login', (req, res) => {
   res.send(`
     <!DOCTYPE html>
     <html lang="ja">
@@ -83,24 +83,24 @@ app.get('/login', (req, res) => {
       <div class="box">
         <h1>AD-COMM Tools</h1>
         <p>組織のGoogleアカウントでログインしてください</p>
-        <a href="/auth/google">Googleでログイン</a>
+        <a href="/translate/auth/google">Googleでログイン</a>
       </div>
     </body>
     </html>
   `);
 });
 
-app.get('/auth/google',
+app.get('/translate/auth/google',
   passport.authenticate('google', { scope: ['profile', 'email'] })
 );
 
-app.get('/auth/callback',
+app.get('/translate/auth/callback',
   passport.authenticate('google', { failureRedirect: '/login?error=denied' }),
-  (req, res) => res.redirect('/')
+  (req, res) => res.redirect('/translate/')
 );
 
-app.get('/logout', (req, res) => {
-  req.logout(() => res.redirect('/login'));
+app.get('/translate/logout', (req, res) => {
+  req.logout(() => res.redirect('/translate/login'));
 });
 
 // 以降のルートはすべて認証必須
@@ -108,11 +108,11 @@ app.use(express.json({ limit: '1mb' }));
 app.use(requireAuth);
 app.use(express.static(path.join(__dirname, 'public')));
 
-app.get('/health', (req, res) => {
+app.get('/translate/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
-app.post('/api/translate', async (req, res) => {
+app.post('/translate/api/translate', async (req, res) => {
   const { prompt } = req.body;
   if (!prompt || typeof prompt !== 'string') {
     return res.status(400).json({ error: 'prompt が不正です' });

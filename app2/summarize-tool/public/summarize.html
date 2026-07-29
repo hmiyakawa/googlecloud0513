@@ -135,7 +135,7 @@
     try {
       const formData = new FormData();
       formData.append('file', file);
-      const data = await callApi('/api/extract-text', { method: 'POST', body: formData });
+      const data = await callApi('/summarize/api/extract-text', { method: 'POST', body: formData });
       $('sourceText').value = data.text;
       statusEl.textContent = '読み込みが完了しました。';
     } catch (err) {
@@ -160,7 +160,7 @@
     $('summarizeBtn').disabled = true;
 
     try {
-      const data = await callApi('/api/summarize', {
+      const data = await callApi('/summarize/api/summarize', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text }),
@@ -191,7 +191,7 @@
     $('translateBtn').disabled = true;
 
     try {
-      const data = await callApi('/api/translate', {
+      const data = await callApi('/summarize/api/translate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text }),

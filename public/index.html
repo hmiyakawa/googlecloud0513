@@ -311,7 +311,7 @@ document.getElementById('input-ja').addEventListener('keydown', (e) => {
 });
 
 async function callAPI(prompt) {
-  const res = await fetch('/api/translate', {
+  const res = await fetch('/translate/api/translate', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ prompt }),
